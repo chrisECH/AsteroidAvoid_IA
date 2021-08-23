@@ -1,0 +1,490 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8" />
+    <title>Balloon Madness</title>
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <script src="lib/synaptic.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var config = {
+    type: Phaser.CANVAS,
+    width: 800,
+    height: 600,
+    physics: {
+        default: 'arcade',
+        arcade: {
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+var game = new Phaser.Game(config);
+
+var mode = '';
+var spaceBlock = false;
+var startText;
+var overText;
+var balls;
+var green_ball;
+var red_ball;
+var blue_ball;
+var yellow_ball;
+var gray_ball;
+var spaceship;
+
+var perceptron , trainer, datosEntrenamiento=[];
+
+function preload ()
+{
+    this.load.image('green-ball', 'assets/green-ball.png');
+    this.load.image('blue-ball', 'assets/blue-ball.png');
+    this.load.image('yellow-ball', 'assets/yellow-ball.png');
+    this.load.image('red-ball', 'assets/red-ball.png');
+    this.load.image('gray-ball', 'assets/gray-ball.png');
+    this.load.image('background', 'assets/background.jpg');
+    this.load.image('spaceship', 'assets/spaceship.png');
+    this.load.image('menu', 'assets/menu.png');
+}
+
+function create ()
+{
+    //Inicialización del background y los cursores
+    this.add.image(400, 300, 'background');
+    cursors = this.input.keyboard.createCursorKeys();
+
+    //Inicialización del mode text
+    modeText = this.add.text(500, 16, 'Mode: 0', { fontSize: '32px', fill: '#fff' });
+
+    //Inicialización del spaceship
+    spaceship = this.physics.add.sprite(400, 300, 'spaceship');
+    spaceship.setCollideWorldBounds(true);
+    spaceship.body.setGravity(0);
+
+    //Declaración del grupo de balls
+    balls = this.physics.add.group()
+
+    //Inicialización de las balls
+    green_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'green-ball');
+    red_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'red-ball');
+    blue_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'blue-ball');
+    yellow_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'yellow-ball');
+    gray_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'gray-ball');
+
+    //Inicialización de la físicas de las balls
+    balls.children.iterate(function (ball) {
+        ball.setBounce(1);
+        ball.setCollideWorldBounds(true);
+        ball.setVelocityX(Phaser.Math.Between(0,1)*300-150);
+        ball.setVelocityY(Phaser.Math.Between(0,1)*300-150);
+    });
+
+    //Colición de del spaceship con una ball
+    this.physics.add.overlap(spaceship, balls, stopGame, null, this);
+
+    //Colisión entre balls
+    this.physics.add.collider(balls, balls, null, null, this);
+
+    //Mensaje de inicio
+    startText = this.add.text(250,250,'<- Manual\n-> Auto',{ fontSize: '50px', fill: '#0f0'});
+
+    perceptron =  new synaptic.Architect.Perceptron(4, 8, 8, 4);
+    trainer = new synaptic.Trainer(perceptron);
+}
+
+function enRedNeural(){
+    trainer.train(datosEntrenamiento, {rate: 0.0005, iterations: 500, shuffle: true});
+}
+
+function update ()
+{
+    //Estado inicial
+    if (mode == ''){
+        //Al iniciar el juego las fisicas se detienen
+        this.physics.pause();
+        
+        //Con cursor izquierdo se inicia el juego manual
+        if (cursors.left.isDown) {
+            mode = 'manual';
+            this.physics.resume();
+            startText.setText('');
+            datosEntrenamiento = [];
+        }
+        
+        //Con cursor derecho se inicia el juego automático
+        if (cursors.right.isDown) {
+            mode = 'auto';
+            this.physics.resume();
+            startText.setText('');
+            console.log("datosEntrenamiento", datosEntrenamiento);
+            enRedNeural();
+        }
+    }
+
+    //Modo manual
+    else if (mode == 'manual'){
+        var despXLeft = 0, despXRight = 0, despYUp = 0, despYDown = 0;
+
+        //Movimientos del spaceship
+        if (cursors.left.isDown) {
+            spaceship.setVelocityX(-250);
+            despXLeft = 1;
+        }
+        if (cursors.right.isDown) {
+            spaceship.setVelocityX(250);
+            despXRight = 1;
+        }
+        if (cursors.up.isDown) {
+            spaceship.setVelocityY(-250);
+            despYUp = 1;
+        }
+        if (cursors.down.isDown) {
+            spaceship.setVelocityY(250);
+            despYDown = 1;
+        }
+
+        //Detención de los movimientos
+        if (cursors.left.isUp && cursors.right.isUp) spaceship.setVelocityX(0);
+        if (cursors.up.isUp && cursors.down.isUp) spaceship.setVelocityY(0);
+
+        //Distancia con la green ball
+        distXGreen = spaceship.getCenter().x-green_ball.getCenter().x;
+        distYGreen = spaceship.getCenter().y-green_ball.getCenter().y;
+        distGreen = Math.sqrt(distXGreen*distXGreen + distYGreen*distYGreen);
+
+        //Distancia con la red ball
+        distXRed = spaceship.getCenter().x-red_ball.getCenter().x;
+        distYRed = spaceship.getCenter().y-red_ball.getCenter().y;
+        distRed = Math.sqrt(distXRed*distXRed + distYRed*distYRed);
+
+        //Distancia con la blue ball
+        distXBlue = spaceship.getCenter().x-blue_ball.getCenter().x;
+        distYBlue = spaceship.getCenter().y-blue_ball.getCenter().y;
+        distBlue = Math.sqrt(distXBlue*distXBlue + distYBlue*distYBlue);
+
+        //Distancia con la yellow ball
+        distXYellow = spaceship.getCenter().x-yellow_ball.getCenter().x;
+        distYYellow = spaceship.getCenter().y-yellow_ball.getCenter().y;
+        distYellow = Math.sqrt(distXYellow*distXYellow + distYYellow*distYYellow);
+
+        //Distancia con la gray ball
+        distXGray = spaceship.getCenter().x-gray_ball.getCenter().x;
+        distYGray = spaceship.getCenter().y-gray_ball.getCenter().y;
+        distGray = Math.sqrt(distXGray*distXGray + distYGray*distYGray);
+        
+        //Acercamiento de la green ball
+        if (distGreen <= 100){
+            console.log('Green Ball');
+            console.log('Inputs');
+            console.log('Distance x',distXGreen);
+            console.log('Distance y',distYGreen);
+            console.log('Ball velocity x',green_ball.body.velocity.x);
+            console.log('Ball velocity y',green_ball.body.velocity.y);
+            console.log('Outputs');
+            console.log('Spaceship X Left',despXLeft);
+            console.log('Spaceship X Right',despXRight);
+            console.log('Spaceship Y Up',despYUp);
+            console.log('Spaceship Y Down',despYDown);
+            console.log('----------');
+            datosEntrenamiento.push({
+                'input' :  [
+                    spaceship.getCenter().x-green_ball.getCenter().x, 
+                    spaceship.getCenter().y-green_ball.getCenter().y, 
+                    green_ball.body.velocity.x, 
+                    green_ball.body.velocity.y],
+                'output':  [despXLeft, despXRight, despYUp, despYDown ]  
+            });
+        }
+
+        //Acercamiento de la red ball
+        if (distRed <= 100){
+            console.log('Red Ball');
+            console.log('Inputs');
+            console.log('Distance x',distXRed);
+            console.log('Distance y',distYRed);
+            console.log('Ball velocity x',red_ball.body.velocity.x);
+            console.log('Ball velocity y',red_ball.body.velocity.y);
+            console.log('Outputs');
+            console.log('Spaceship X Left',despXLeft);
+            console.log('Spaceship X Right',despXRight);
+            console.log('Spaceship Y Up',despYUp);
+            console.log('Spaceship Y Down',despYDown);
+            console.log('----------');
+            datosEntrenamiento.push({
+                'input' :  [
+                    spaceship.getCenter().x-red_ball.getCenter().x, 
+                    spaceship.getCenter().y-red_ball.getCenter().y, 
+                    red_ball.body.velocity.x, 
+                    red_ball.body.velocity.y],
+                'output':  [despXLeft, despXRight, despYUp, despYDown ]  
+            });
+        }
+
+        //Acercamiento de la blue ball
+        if (distBlue <= 100){
+            console.log('Blue Ball');
+            console.log('Inputs');
+            console.log('Distance x',distXBlue);
+            console.log('Distance y',distYBlue);
+            console.log('Ball velocity x',blue_ball.body.velocity.x);
+            console.log('Ball velocity y',blue_ball.body.velocity.y);
+            console.log('Outputs');
+            console.log('Spaceship X Left',despXLeft);
+            console.log('Spaceship X Right',despXRight);
+            console.log('Spaceship Y Up',despYUp);
+            console.log('Spaceship Y Down',despYDown);
+            console.log('----------');
+            datosEntrenamiento.push({
+                'input' :  [
+                    spaceship.getCenter().x-blue_ball.getCenter().x, 
+                    spaceship.getCenter().y-blue_ball.getCenter().y, 
+                    blue_ball.body.velocity.x, 
+                    blue_ball.body.velocity.y],
+                'output':  [despXLeft, despXRight, despYUp, despYDown ]  
+            });
+        }
+
+        //Acercamiento de la yellow ball
+        if (distYellow <= 100){
+            console.log('Yellow Ball');
+            console.log('Inputs');
+            console.log('Distance x',distXYellow);
+            console.log('Distance y',distYYellow);
+            console.log('Ball velocity x',yellow_ball.body.velocity.x);
+            console.log('Ball velocity y',yellow_ball.body.velocity.y);
+            console.log('Outputs');
+            console.log('Spaceship X Left',despXLeft);
+            console.log('Spaceship X Right',despXRight);
+            console.log('Spaceship Y Up',despYUp);
+            console.log('Spaceship Y Down',despYDown);
+            console.log('----------');
+            datosEntrenamiento.push({
+                'input' :  [
+                    spaceship.getCenter().x-yellow_ball.getCenter().x, 
+                    spaceship.getCenter().y-yellow_ball.getCenter().y, 
+                    yellow_ball.body.velocity.x, 
+                    yellow_ball.body.velocity.y],
+                'output':  [despXLeft, despXRight, despYUp, despYDown ]  
+            });
+        }
+
+        //Acercamiento de la gray ball
+        if (distGray <= 100){
+            console.log('Gray Ball');
+            console.log('Inputs');
+            console.log('Distance x',distXGray);
+            console.log('Distance y',distYGray);
+            console.log('Ball velocity x',gray_ball.body.velocity.x);
+            console.log('Ball velocity y',gray_ball.body.velocity.y);
+            console.log('Outputs');
+            console.log('Spaceship X Left',despXLeft);
+            console.log('Spaceship X Right',despXRight);
+            console.log('Spaceship Y Up',despYUp);
+            console.log('Spaceship Y Down',despYDown);
+            console.log('----------');
+            datosEntrenamiento.push({
+                'input' :  [
+                    spaceship.getCenter().x-gray_ball.getCenter().x, 
+                    spaceship.getCenter().y-gray_ball.getCenter().y, 
+                    gray_ball.body.velocity.x, 
+                    gray_ball.body.velocity.y],
+                'output':  [despXLeft, despXRight, despYUp, despYDown ]  
+            });
+        }
+    }
+
+    else if (mode == 'auto'){
+
+        var move = false;
+
+        //Distancia conm la green ball
+        distXGreen = spaceship.getCenter().x-green_ball.getCenter().x;
+        distYGreen = spaceship.getCenter().y-green_ball.getCenter().y;
+        distGreen = Math.sqrt(distXGreen*distXGreen + distYGreen*distYGreen);
+        
+        //Acercamiento de la green ball
+        if (distGreen <= 100){
+            move = true;
+            result = perceptron.activate([
+                distXGreen, 
+                distYGreen, 
+                green_ball.body.velocity.x, 
+                green_ball.body.velocity.y]);
+
+            console.log(result);
+
+            if(result[0] > result[1]) spaceship.setVelocityX(-250);
+            if(result[1] > result[0]) spaceship.setVelocityX(250);
+            if(result[2] > result[3]) spaceship.setVelocityY(-250);
+            if(result[3] > result[2]) spaceship.setVelocityY(250);
+        }
+
+        //Distancia conm la red ball
+        distXRed = spaceship.getCenter().x-red_ball.getCenter().x;
+        distYRed = spaceship.getCenter().y-red_ball.getCenter().y;
+        distRed = Math.sqrt(distXRed*distXRed + distYRed*distYRed);
+
+        //Acercamiento de la red ball
+        if (distRed <= 100){
+            move = true;
+            result = perceptron.activate([
+                distXRed, 
+                distYRed, 
+                red_ball.body.velocity.x, 
+                red_ball.body.velocity.y]);
+
+            console.log(result);
+
+            if(result[0] > result[1]) spaceship.setVelocityX(-250);
+            if(result[1] > result[0]) spaceship.setVelocityX(250);
+            if(result[2] > result[3]) spaceship.setVelocityY(-250);
+            if(result[3] > result[2]) spaceship.setVelocityY(250);
+        }
+
+        //Distancia conm la blue ball
+        distXBlue = spaceship.getCenter().x-blue_ball.getCenter().x;
+        distYBlue = spaceship.getCenter().y-blue_ball.getCenter().y;
+        distBlue = Math.sqrt(distXBlue*distXBlue + distYBlue*distYBlue);
+
+        //Acercamiento de la blue ball
+        if (distBlue <= 100){
+            move = true;
+            result = perceptron.activate([
+                distXBlue, 
+                distYBlue, 
+                blue_ball.body.velocity.x, 
+                blue_ball.body.velocity.y]);
+
+            console.log(result);
+
+            if(result[0] > result[1]) spaceship.setVelocityX(-250);
+            if(result[1] > result[0]) spaceship.setVelocityX(250);
+            if(result[2] > result[3]) spaceship.setVelocityY(-250);
+            if(result[3] > result[2]) spaceship.setVelocityY(250);
+        }
+
+        //Distancia conm la yellow ball
+        distXYellow = spaceship.getCenter().x-yellow_ball.getCenter().x;
+        distYYellow = spaceship.getCenter().y-yellow_ball.getCenter().y;
+        distYellow = Math.sqrt(distXYellow*distXYellow + distYYellow*distYYellow);
+
+        //Acercamiento de la blue ball
+        if (distYellow <= 100){
+            move = true;
+            result = perceptron.activate([
+                distXBlue, 
+                distYBlue, 
+                yellow_ball.body.velocity.x, 
+                yellow_ball.body.velocity.y]);
+
+            console.log(result);
+
+            if(result[0] > result[1]) spaceship.setVelocityX(-250);
+            if(result[1] > result[0]) spaceship.setVelocityX(250);
+            if(result[2] > result[3]) spaceship.setVelocityY(-250);
+            if(result[3] > result[2]) spaceship.setVelocityY(250);
+        }
+
+        //Distancia con la gray ball
+        distXGray = spaceship.getCenter().x-gray_ball.getCenter().x;
+        distYGray = spaceship.getCenter().y-gray_ball.getCenter().y;
+        distGray = Math.sqrt(distXGray*distXGray + distYGray);
+
+        //Acercamiento de la blue ball
+        if (distGray <= 100){
+            move = true;
+            result = perceptron.activate([
+                distXGray, 
+                distYGray, 
+                gray_ball.body.velocity.x, 
+                gray_ball.body.velocity.y]);
+
+            console.log(result);
+
+            if(result[0] > result[1]) spaceship.setVelocityX(-250);
+            if(result[1] > result[0]) spaceship.setVelocityX(250);
+            if(result[2] > result[3]) spaceship.setVelocityY(-250);
+            if(result[3] > result[2]) spaceship.setVelocityY(250);
+        }
+
+        if(!move){
+            spaceship.setVelocityX(0);
+            spaceship.setVelocityY(0);
+        }
+    }
+
+    //Modo Over, con space se reinicia el juego
+    else if (mode == 'over'){
+        if (cursors.space.isDown) {
+            //Se desactiva el texto final
+            overText.setText('');
+
+            //Reinicio del spaceship
+            spaceship.disableBody(true, true);
+            spaceship = this.physics.add.sprite(400, 300, 'spaceship');
+            spaceship.setCollideWorldBounds(true);
+            spaceship.body.setGravity(0);
+            
+            //Reinicio de las balls
+            green_ball.disableBody(true, true);
+            green_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'green-ball');
+            red_ball.disableBody(true, true);
+            red_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'red-ball');
+            blue_ball.disableBody(true, true);
+            blue_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'blue-ball');
+            yellow_ball.disableBody(true, true);
+            yellow_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'yellow-ball');
+            gray_ball.disableBody(true, true);
+            gray_ball = balls.create(Phaser.Math.Between(50,750), Phaser.Math.Between(50, 200),'gray-ball');
+
+            //Reinicio de las fisicas de las balls
+            balls.children.iterate(function (ball) {
+                ball.setBounce(1);
+                ball.setCollideWorldBounds(true);
+                ball.setVelocityX(Phaser.Math.Between(0,1)*300-150);
+                ball.setVelocityY(Phaser.Math.Between(0,1)*300-150);
+            });
+
+            //Reinicio de las colisiones
+            this.physics.add.overlap(spaceship, balls, stopGame, null, this);
+
+            //Colisión entre balls
+            this.physics.add.collider(balls, balls, null, null, this);
+
+            //Reinicio del menu
+            startText = this.add.text(250,250,'<- Manual\n-> Auto',{ fontSize: '50px', fill: '#0f0'});
+            
+            //Reinicio del modo
+            mode = '';
+        }
+    }
+
+    //Actualización del mode
+    modeText.setText('Mode: '+mode);
+}
+
+//Detención del juego
+function stopGame(spaceship, ball)
+{
+    this.physics.pause();
+    mode = 'over';
+    overText = this.add.text(150,250,'Presiona espacio\npara reiniciar',{ fontSize: '50px', fill: '#0f0'});
+}
+
+</script>
+
+</body>
+</html>
